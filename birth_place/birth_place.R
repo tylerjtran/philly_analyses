@@ -27,15 +27,24 @@ birth_place <- census_data %>%
             p_born_outside_us = sum(estimate[variable == 'B05002_013'])/sum(estimate[variable == 'B05002_001']),
             geometry = unique(geometry)) 
 
+# Show diverging with midpoint at 50%
+birth_place %>%
+  ggplot(aes(fill = p_born_pa)) +
+  geom_sf(col = 'white')
+
 plurality_birthplace <- birth_place %>%
   st_set_geometry(NULL) %>%
   select(-p_born_pa, -p_born_other_state) %>%
   pivot_longer(-GEOID, names_to = 'region', values_to = 'p') %>%
   group_by(GEOID) %>%
   arrange(desc(p)) %>%
-  slice(p)
+  slice(p, 1)
+
+birth_place <- birth_place %>%
+  left_join(plurality_birthplace %>%
+              select(-p))
 
 # Show diverging with midpoint at 50%
 birth_place %>%
-  ggplot(aes(fill = p_born_pa)) +
+  ggplot(aes(fill = region)) +
   geom_sf(col = 'white')
