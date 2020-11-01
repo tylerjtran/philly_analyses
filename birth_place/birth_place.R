@@ -1,12 +1,27 @@
 
 
-library(tidyverse); library(tidycensus); library(sf)
+library(tidyverse); library(tidycensus); library(sf); library(USAboundaries)
 
 census_api_key('851a34f48dcd85ed13788351d2b04e7cd00c84d5')
 
 v17 <- load_variables(2018, "acs5", cache = TRUE)
 
 View(v17)
+
+peer_cities <- 'baltimore city, maryland|philadelphia city, pennsylvania|seattle city, washington|new york city|chicago city, illinois|
+                |los angeles city, california|phoenix city, arizona|boston city, massachusetts|minneapolis city, minnesota|
+                |charlotte city, north carolina|denver city, colorado|miami city, florida|portland city, oregon|
+                |san francisco city, california|houston city, texas|austin city, texas|atlanta city, georgia'
+
+peer_census_data <- get_acs(geography = 'place',
+                            variables = c('B05002_001', 'B05002_003'),
+                            year = 2018) %>%
+  filter(grepl(peer_cities, NAME, ignore.case = TRUE),
+         ! grepl('east|west|south|north chicago|north miami', NAME, ignore.case = TRUE)) %>%
+  group_by(NAME) %>%
+  summarise(born_in_state = sum(estimate[variable == 'B05002_003'])/sum(estimate[variable == 'B05002_001'])) %>%
+  mutate(NAME = gsub(' city', '', NAME))
+
 
 
 census_data <- get_acs(geography = 'tract',
@@ -59,3 +74,8 @@ birth_place <- birth_place %>%
 birth_place %>%
   ggplot(aes(fill = region_no_pa)) +
   geom_sf(col = 'white')
+
+
+county_acs <- get_acs(geography = 'county',
+                      variables = c('B05002_001', 'B05002_003'),
+                      year = 2018)
