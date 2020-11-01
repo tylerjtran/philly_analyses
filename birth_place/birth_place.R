@@ -24,7 +24,8 @@ birth_place <- census_data %>%
             p_born_midwest = sum(estimate[variable == 'B05002_006'])/sum(estimate[variable == 'B05002_001']),
             p_born_south = sum(estimate[variable == 'B05002_007'])/sum(estimate[variable == 'B05002_001']),
             p_born_west = sum(estimate[variable == 'B05002_008'])/sum(estimate[variable == 'B05002_001']),
-            p_born_outside_us = sum(estimate[variable == 'B05002_013'])/sum(estimate[variable == 'B05002_001']),
+            p_born_outside_us = sum(estimate[variable %in% c('B05002_009', 'B05002_012', 'B05002_013')])/
+              sum(estimate[variable == 'B05002_001']),
             geometry = unique(geometry)) 
 
 # Show diverging with midpoint at 50%
@@ -32,19 +33,29 @@ birth_place %>%
   ggplot(aes(fill = p_born_pa)) +
   geom_sf(col = 'white')
 
-plurality_birthplace <- birth_place %>%
+plurality_birthplace_no_pa <- birth_place %>%
   st_set_geometry(NULL) %>%
   select(-p_born_pa, -p_born_other_state) %>%
-  pivot_longer(-GEOID, names_to = 'region', values_to = 'p') %>%
+  pivot_longer(-GEOID, names_to = 'region_no_pa', values_to = 'p') %>%
+  group_by(GEOID) %>%
+  arrange(desc(p)) %>%
+  slice(p, 1)
+
+plurality_birthplace_incl_pa <- birth_place %>%
+  st_set_geometry(NULL) %>%
+  select(-p_born_other_state) %>%
+  pivot_longer(-GEOID, names_to = 'region_incl_pa', values_to = 'p') %>%
   group_by(GEOID) %>%
   arrange(desc(p)) %>%
   slice(p, 1)
 
 birth_place <- birth_place %>%
-  left_join(plurality_birthplace %>%
+  left_join(plurality_birthplace_no_pa %>%
+              select(-p)) %>%
+  left_join(plurality_birthplace_incl_pa %>%
               select(-p))
 
 # Show diverging with midpoint at 50%
 birth_place %>%
-  ggplot(aes(fill = region)) +
+  ggplot(aes(fill = region_no_pa)) +
   geom_sf(col = 'white')
