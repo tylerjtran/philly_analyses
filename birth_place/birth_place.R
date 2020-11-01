@@ -4,9 +4,7 @@ library(tidyverse); library(tidycensus); library(sf); library(USAboundaries)
 
 census_api_key('851a34f48dcd85ed13788351d2b04e7cd00c84d5')
 
-v17 <- load_variables(2018, "acs5", cache = TRUE)
 
-View(v17)
 
 peer_cities <- 'baltimore city, maryland|philadelphia city, pennsylvania|seattle city, washington|new york city|chicago city, illinois|
                 |los angeles city, california|phoenix city, arizona|boston city, massachusetts|minneapolis city, minnesota|
@@ -17,6 +15,7 @@ peer_census_data <- get_acs(geography = 'place',
                             variables = c('B05002_001', 'B05002_003'),
                             year = 2018) %>%
   filter(grepl(peer_cities, NAME, ignore.case = TRUE),
+         # Get rid of directional "places"
          ! grepl('east|west|south|north chicago|north miami', NAME, ignore.case = TRUE)) %>%
   group_by(NAME) %>%
   summarise(born_in_state = sum(estimate[variable == 'B05002_003'])/sum(estimate[variable == 'B05002_001'])) %>%
@@ -31,6 +30,7 @@ census_data <- get_acs(geography = 'tract',
                        year = 2018,
                        geometry = TRUE)
 
+# For each census tract, get % born in PA vs other regions
 birth_place <- census_data %>%
   group_by(GEOID) %>%
   summarise(p_born_pa = sum(estimate[variable == 'B05002_003'])/sum(estimate[variable == 'B05002_001']),
