@@ -4,8 +4,7 @@
 library(tidyverse); library(sf); library(tidycensus)
 
 
-census_api_key('')
-
+census_api_key(Sys.getenv('census_api'))
 
 
 # This function pulls race and ethnicity data for each census tract (or other
