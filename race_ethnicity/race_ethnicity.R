@@ -11,7 +11,7 @@ census_api_key(Sys.getenv('census_api'))
 # specified geography) in Philadelphia from the ACS. It creates a separate category
 # for Latinx residents and subtracts those from other racial groups. So, the label "Black"
 # actually means "Black and not Latinx" and "white" means "white and not Latinx"
-get_race_ethnicity(geography = 'tract', geometry = FALSE){
+get_race_ethnicity <- function(geography = 'tract', geometry = FALSE){
   
   acs_descriptions <- load_variables(2019, "acs5", cache = TRUE)
   
