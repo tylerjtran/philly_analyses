@@ -72,6 +72,7 @@ get_race_ethnicity <- function(geography = 'tract', geometry = FALSE){
     ungroup() %>%
     rename(Latinx = n_latinx) %>%
     pivot_wider(id_cols = c(GEOID, race, Latinx), names_from = race, values_from = estimate) %>%
+    filter(Total != 0) %>%
     pivot_longer(-GEOID, names_to = 'race_eth', values_to = 'n') %>%
     group_by(GEOID) %>%
     mutate(p = n/n[race_eth == 'Total']) %>%
