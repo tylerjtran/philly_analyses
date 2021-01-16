@@ -75,21 +75,21 @@ get_race_ethnicity <- function(geography = 'tract', geometry = FALSE){
     pivot_longer(-GEOID, names_to = 'race_eth', values_to = 'n') %>%
     group_by(GEOID) %>%
     mutate(p = n/n[race_eth == 'Total']) %>%
-    ungroup()
+    ungroup() %>%
+    filter(race_eth != 'Total')
   
   # Separately pull geometry if geometry is TRUE so don't have to deal with that extra column
   # when manipulating data above. use tidycensus instead of tigris b/c same function for all
   # geographies
   if (geometry){
-    race <- race %>%
-      left_join(get_acs(geography = geography,
+    race <- get_acs(geography = geography,
                         variables = 'B01001_001',
                         state = 'PA',
                         county = 'Philadelphia',
                         year = 2019,
                         geometry = T) %>%
-                  select(GEOID, geometry),
-                by = 'GEOID')
+                  select(GEOID, geometry) %>%
+      left_join(race, by = 'GEOID')
   }
   
   return(race)
