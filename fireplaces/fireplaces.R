@@ -28,7 +28,7 @@ neighborhoods <- st_read('https://raw.githubusercontent.com/azavea/geo-data/mast
 city <- st_read('http://data.phl.opendata.arcgis.com/datasets/063f5f85ef17468ebfebc1d2498b7daf_0.geojson') %>%
   st_union()
 
-# Run the race_ethnicity code
+# Run the race_ethnicity code to get get_race_ethnicity() function
 source('./race_ethnicity/race_ethnicity.R')
 
 # All single family homes with some year and value bounds
@@ -109,11 +109,36 @@ med_income <- get_acs(geography = 'tract',
          lowest_income = income_quantile == min(income_quantile, na.rm = T))
 
 ggplot() +
-  # geom_sf(data = med_income, aes(fill = estimate)) +
   geom_sf(data = med_income, aes(fill = lowest_income)) +
   geom_sf(data = all_sfh %>%
                filter(has_fireplace),
              size = 0.5)
+
+# Age vs market value plot
+ggplot() +
+  geom_point(data = all_sfh %>%
+               filter(! has_fireplace), 
+             aes(x = year_built, y = market_value), col = 'darkgray', alpha = 0.5) +
+  # Plot as a separate object to make sure these are on top
+  geom_point(data = all_sfh %>%
+               filter(has_fireplace), 
+             aes(x = year_built, y = market_value), col = 'darkred', alpha = 0.3) +
+  labs(title = 'Inexpensive new houses with fireplaces are rare in Philadelphia',
+       x = 'Construction Year', y = 'Assessed Market Value',
+       subtitle = str_wrap('Each point on the graph below is a house; red points are houses with fireplaces and gray points are houses without fireplaces.')) +
+  annotate('text', x = 2027, y = 100000, label = 'This house sold\nfor $425k but is\nassessed at $15k', 
+           family = 'ssp') +
+  scale_y_continuous(expand = c(0, 0),
+                     breaks = c(0, 200000, 400000, 600000), 
+                     labels = c('$0', '$200k', '$400k', '$600k'),
+                     limits = c(0, 600000)) +
+  scale_x_continuous(limits = c(1921, 2032)) + 
+  theme(panel.background = element_blank(),
+        panel.grid = element_blank()) +
+  font_theme
+
+# 2018 house: this house last sold for 425k (304 Coulter St)
+# 1982 house: (647 Clearfield)
 
 # number of and proportion of single family houses in each census tract with fireplaces recorded
 n_per_tract <- tracts %>%
@@ -221,15 +246,7 @@ for (i in 1:length(decades)){
 }
 
 
-age_per_tract <- tracts %>%
-  st_join(all_sfh, join = st_intersects) %>%
-  group_by(GEOID10) %>%
-  summarise(med_year_built = median(year_built, na.rm = T),
-            mean_year_built = mean(year_built, na.rm = T))
 
-age_per_tract %>%
-  ggplot() +
-  geom_sf(aes(fill = med_year_built))
 
 # Get citywide % of homes w fireplaces by decade (to bind below)
 citywide <- all_sfh %>%
