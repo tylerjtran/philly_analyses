@@ -132,7 +132,6 @@ p_housing_types %>%
        caption = 'Source: ACS 2015-2019 5-year estimates') +
   scale_y_continuous(expand = c(0, 0), breaks = c(0.25, 0.5, 0.75),
                      labels = c('25%', '50%', '75%')) +
-  # scale_fill_discrete(labels = str_pad_custom) +
   scale_fill_manual(values = my_palette, labels = str_pad_custom) +
   coord_flip() +
   theme(
