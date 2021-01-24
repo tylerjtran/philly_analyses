@@ -1,9 +1,37 @@
 
 
+library(tidyverse); library(sf); library(tidycensus); library(lubridate); library(showtext)
+
+
+#######################################################################
+
+# Set up fonts
+
+font_add_google('Merriweather')
+font_add_google('Source Sans Pro', 'ssp')
+
+showtext_auto()
+
+font_theme <- theme(
+  plot.title = element_text(family = 'Merriweather', face = 'bold'),
+  plot.subtitle = element_text(family = 'ssp'),
+  axis.text = element_text(family = 'ssp'),
+  axis.title = element_text(family = 'ssp'),
+  plot.caption = element_text(family = 'ssp', color = 'darkgray')
+)
+
+#######################################################################
+
+# Get census tracts and Azavea neighborhoods from opendataphilly
 tracts <- st_read('http://data.phl.opendata.arcgis.com/datasets/8bc0786524a4486bb3cf0f9862ad0fbf_0.geojson')
 neighborhoods <- st_read('https://raw.githubusercontent.com/azavea/geo-data/master/Neighborhoods_Philadelphia/Neighborhoods_Philadelphia.geojson')
+city <- st_read('http://data.phl.opendata.arcgis.com/datasets/063f5f85ef17468ebfebc1d2498b7daf_0.geojson') %>%
+  st_union()
 
+# Run the race_ethnicity code
+source('./race_ethnicity/race_ethnicity.R')
 
+# All single family homes with some year and value bounds
 all_sfh <- st_read('https://phl.carto.com/api/v2/sql?filename=opa_properties_public&format=geojson&skipfields=cartodb_id&q=SELECT+*+FROM+opa_properties_public') %>%
   filter(category_code_description == 'Single Family') %>%
   mutate(has_fireplace = fireplaces > 0,
@@ -12,6 +40,48 @@ all_sfh <- st_read('https://phl.carto.com/api/v2/sql?filename=opa_properties_pub
          year_built <= year(today()),
          market_value <= 4000000)
 
+# race breakdowns of census block groups
+race_bg <- get_race_ethnicity(geography = 'block group', geometry = T) %>%
+  filter(! is.na(race_eth))
+
+# # Generate dot map a la UVA map
+# race_points <- NULL
+# for (i in 1:nrow(race_bg)){
+#   race_points <- rbind(
+#     race_points,
+#     st_sample(race_bg[i,], round(race_bg$n[i]/10)) %>%
+#       st_sf() %>%
+#       mutate(race_eth = race_bg$race_eth[i])
+#   )
+# }
+
+# # Generate dot map like above
+# This method seems to be slower than the for loop
+# race_points <- map(unique(race_bg$race_eth), function(group) {
+#   race_bg %>%
+#     filter(race_eth == group) %>%
+#     st_sample(., size = .$n) %>%
+#     st_sf() %>%
+#     mutate(group = group) 
+# }) %>%
+#   reduce(rbind) %>%
+#   group_by(group) %>%
+#   summarise()
+
+race_points <- st_read('./race_ethnicity/race_points.shp')
+
+my_cols <- c('#ff0202', '#aad44b', '#edb12c', '#e2c46e', '#86bbe3')
+
+ggplot() + 
+  geom_sf(data = race_points, aes(col = race_eth), shape = '.') + 
+  # geom_sf(data = fireplaces, size = 0.5, col = 'black') +
+  scale_color_manual(values = my_cols)
+
+# side-by-side map: left, fireplaces as points 0.5, dark red. put a semi-transparent gray layer
+# on philly suburbs
+
+
+# Function to calculate % of houses with fireplaces
 calc_p_fireplace <- function(df, col_of_interest){
   df %>%
     as_tibble() %>%
@@ -27,79 +97,52 @@ calc_p_fireplace <- function(df, col_of_interest){
               p_fireplace = n_fireplace/n_sfh)
 }
 
+# get median household income data from ACS and split into quantiles
+med_income <- get_acs(geography = 'tract',
+                      variables = 'B19013_001',
+                      state = 'PA',
+                      county = 'Philadelphia',
+                      year = 2019,
+                      geometry = T) %>%
+  mutate(income_quantile = cut_number(estimate, 5),
+         income_quantile = factor(income_quantile, levels = levels(income_quantile), ordered = TRUE),
+         lowest_income = income_quantile == min(income_quantile, na.rm = T))
+
+ggplot() +
+  # geom_sf(data = med_income, aes(fill = estimate)) +
+  geom_sf(data = med_income, aes(fill = lowest_income)) +
+  geom_sf(data = all_sfh %>%
+               filter(has_fireplace),
+             size = 0.5)
+
+# number of and proportion of single family houses in each census tract with fireplaces recorded
 n_per_tract <- tracts %>%
   st_join(all_sfh, join = st_intersects) %>%
   calc_p_fireplace(col_of_interest = GEOID10)
 
+# re-join to tracts sf object bc i wrote the calc_p_..() function to remove the geometry
 tracts_fireplaces <- tracts %>%
   left_join(n_per_tract, by = 'GEOID10')
 
+# map of % of homes with fireplaces by census tract
 ggplot() +
   geom_sf(data = tracts_fireplaces, aes(fill = p_fireplace))
 
 
-n_per_neighborhood <- neighborhoods %>%
-  st_join(all_sfh, join = st_intersects) %>%
-  calc_p_fireplace(col_of_interest = mapname)
-
-neighborhoods_fireplaces <- neighborhoods %>%
-  left_join(n_per_neighborhood, by = 'mapname')
-
-
-centuries_fireplaces <- all_sfh %>%
-  mutate(century = paste0(substr(as.character(year_built), 1, 2), '00s')) %>%
-  calc_p_fireplace(col_of_interest = century)
-
-demicenturies_fireplaces <- all_sfh %>%
-  filter(year_built >= 1700) %>%
-  mutate(fifty_years = case_when(
-    year_built < 1750 ~ '1700-1749',
-    year_built < 1800 ~ '1750-1799',
-    year_built < 1850 ~ '1800-1849',
-    year_built < 1900 ~ '1850-1899',
-    year_built < 1950 ~ '1900-1949',
-    year_built < 2000 ~ '1950-1999',
-    year_built < 2050 ~ '2000-2049'
-  )) %>%
-  calc_p_fireplace(col_of_interest = fifty_years)
-
-
+# Look at prevalence of fireplaces in 1800s to compare to Penn master's thesis
 fireplaces_1800s <- all_sfh %>%
-  filter(year_built >= 1800) %>%
-  mutate(decade = case_when(
-    year_built < 1810 ~ '1800s',
-    year_built < 1820 ~ '1810s',
-    year_built < 1830 ~ '1820s',
-    year_built < 1840 ~ '1830s',
-    year_built < 1850 ~ '1840s',
-    year_built < 1860 ~ '1850s',
-    year_built < 1870 ~ '1860s',
-    year_built < 1880 ~ '1870s',
-    year_built < 1890 ~ '1880s',
-    year_built < 1900 ~ '1890s',
-    TRUE ~ NA_character_
-  )) %>%
-  filter(! is.na(decade)) %>%
+  filter(year_built >= 1800,
+         year_built < 1900) %>%
+  mutate(decade = paste0(as.character(year_built - (year_built %% 10)), 's')) %>%
   calc_p_fireplace(col_of_interest = decade)
 
 
 heat_1800s <- all_sfh %>%
   as_tibble() %>%
   select(-geometry) %>%
-  filter(year_built >= 1800) %>%
-  mutate(decade = case_when(
-    year_built < 1810 ~ '1800s',
-    year_built < 1820 ~ '1810s',
-    year_built < 1830 ~ '1820s',
-    year_built < 1840 ~ '1830s',
-    year_built < 1850 ~ '1840s',
-    year_built < 1860 ~ '1850s',
-    year_built < 1870 ~ '1860s',
-    year_built < 1880 ~ '1870s',
-    year_built < 1890 ~ '1880s',
-    year_built < 1900 ~ '1890s',
-    TRUE ~ NA_character_
-  ),
+  filter(year_built >= 1800,
+         year_built < 1900) %>%
+  mutate(decade = paste0(as.character(year_built - (year_built %% 10)), 's'),
   fuel_type = case_when(
     fuel == 'A' ~ 'Natural gas',
     fuel == 'B' ~ 'Oil',
@@ -126,5 +169,138 @@ heat_1800s <- all_sfh %>%
   count(fuel_type) %>%
   mutate(p = n/sum(n))
   
+fireplaces_decades <- fireplaces %>%
+  mutate(decade = year_built - (year_built %% 10))
+
+
+# gganimate::shadow_mark() doesn't seem to be working with transition_manual()
+# ggplot() +
+#   geom_sf(data = fireplaces_decades, col = 'darkred') 
+#   transition_manual(decade) + 
+#   shadow_mark(col = 'darkgray')
+  
+
+
+decades <- unique(fireplaces_decades$decade)
+
+year_label <- tibble(
+  lat = rep(40.09, length(decades)),
+  lng = rep(-75.13, length(decades)),
+  label = paste0(decades, 's')
+) %>%
+  st_as_sf(coords = c('lng', 'lat'), crs = st_crs(city))
+
+title_label <- tibble(
+  lat = 40.128,
+  lng = -75.2481,
+  label = "Philadelphia Fireplaces"
+) %>%
+  st_as_sf(coords = c('lng', 'lat'), crs = st_crs(city))
+
+for (i in 1:length(decades)){
+  ggplot() +
+    geom_sf(data = city, fill = 'lightgray', col = NA) +
+    geom_sf_text(data = year_label[i,], aes(label = label), size = 14, family = 'ssp') +
+    geom_sf_text(data = title_label, aes(label = label), hjust = 0, 
+                 family = 'Merriweather', fontface = 'bold', size = 14) +
+    geom_sf(data = fireplaces_decades %>%
+              filter(decade < decades[i]),
+            col = 'darkgray', size = 0.9) +
+    geom_sf(data = fireplaces_decades %>%
+              filter(decade == decades[i]),
+            col = 'darkred', size = 0.9) +
+    theme(
+      panel.background = element_blank(),
+      panel.grid = element_blank(),
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.title = element_blank()
+    )
+  
+  ggsave(filename = paste0('fireplace_map_', decades[i], '.png'))
+}
+
+
+age_per_tract <- tracts %>%
+  st_join(all_sfh, join = st_intersects) %>%
+  group_by(GEOID10) %>%
+  summarise(med_year_built = median(year_built, na.rm = T),
+            mean_year_built = mean(year_built, na.rm = T))
+
+age_per_tract %>%
+  ggplot() +
+  geom_sf(aes(fill = med_year_built))
+
+# Get citywide % of homes w fireplaces by decade (to bind below)
+citywide <- all_sfh %>%
+  filter(year_built >= 1900,
+         year_built <= 2019) %>%
+  mutate(decade = year_built - (year_built %% 10),
+         period = paste0(decade, 's')) %>%
+  calc_p_fireplace(col_of_interest = period) %>%
+  mutate(mapname = 'Citywide', .after = 'period') %>%
+  group_by(mapname) %>%
+  mutate(neigh_avg = mean(p_fireplace, na.rm = T))
+
+# selected neighborhoods for heatmap below
+selected_neighborhoods <- c('Upper Roxborough', 'Society Hill', 'Chestnut Hill', 'West Mount Airy',
+                            'Passyunk Square', 'Northern Liberties', 'Queen Village',
+                            'Pennsport', 'Roxborough', 'Fishtown - Lower Kensington',
+                            'Graduate Hospital', 'Fairmount', 'Rittenhouse', 'Point Breeze', 'Brewerytown',
+                            'Grays Ferry', 'Strawberry Mansion')
+
+# for a selection of neighborhoods, what % of houses built each decade have fireplaces?
+neighborhood_heatmap <- neighborhoods %>%
+  st_join(all_sfh, join = st_intersects) %>%
+  filter(year_built >= 1900,
+         year_built <= 2019) %>%
+  mutate(decade = year_built - (year_built %% 10),
+         period = paste0(decade, 's')) %>%
+  as_tibble() %>%
+  select(-geometry) %>%
+  group_by(period, mapname, has_fireplace) %>%
+  count() %>%
+  ungroup() %>%
+  complete(period, mapname, has_fireplace = c(T, F), fill = list(n = 0)) %>%
+  filter(! is.na(has_fireplace)) %>%
+  group_by(period, mapname) %>%
+  summarise(n_sfh = sum(n),
+            n_fireplace = n[has_fireplace],
+            p_fireplace = n_fireplace/n_sfh) %>%
+  filter(mapname %in% selected_neighborhoods) %>%
+  mutate(mapname = if_else(mapname == 'Fishtown - Lower Kensington',
+                           'Fishtown',
+                           mapname)) %>%
+  group_by(mapname) %>%
+  # Get an average % by neighborhood across time to arrange the heatmap by
+  mutate(neigh_avg = mean(p_fireplace, na.rm = T)) %>%
+  ungroup() %>%
+  bind_rows(citywide)
+
+
+
+bold_citywide <- c(rep('plain', 6), 'bold.italic', rep('plain', 11))
+
+# Create a heatmap of % of homes with fireplaces by construction decade
+neighborhood_heatmap %>%
+  ggplot(aes(x = period, y = reorder(mapname, neigh_avg), fill = p_fireplace)) +
+  geom_tile(col = 'white') +
+  scale_fill_gradient(low = '#ededed', high = 'darkred') +
+  coord_equal() +
+  scale_x_discrete(position = 'top') +
+  scale_y_discrete(position = 'right') +
+  labs(title = 'A comparison of neighborhood fireplaces over time',
+       x = '', y = '',
+       subtitle = str_wrap('The heatmap below shows the prominence of fireplaces in different neighborhoods of Philadelphia visualized by decade of home construction. Darker-red squares signify that a higher proportion of homes built during that decade have fireplaces. A gray square means that there are currently no homes recorded that were built during that decade.')) +
+  theme(
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank(),
+    legend.position = 'none',
+    plot.title = element_text(size = 14),
+    axis.text.y = element_text(face = bold_citywide)
+  ) +
+  font_theme
 
 
