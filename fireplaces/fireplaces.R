@@ -114,10 +114,10 @@ ggplot() +
                filter(has_fireplace),
              size = 0.5)
 
-# Age vs market value plot
+# Age vs market value plot. 8.11in wide x 4.6in tall (maybe taller)
 ggplot() +
   geom_point(data = all_sfh %>%
-               filter(! has_fireplace), 
+               filter(! has_fireplace),
              aes(x = year_built, y = market_value), col = 'darkgray', alpha = 0.5) +
   # Plot as a separate object to make sure these are on top
   geom_point(data = all_sfh %>%
@@ -126,19 +126,21 @@ ggplot() +
   labs(title = 'Inexpensive new houses with fireplaces are rare in Philadelphia',
        x = 'Construction Year', y = 'Assessed Market Value',
        subtitle = str_wrap('Each point on the graph below is a house; red points are houses with fireplaces and gray points are houses without fireplaces.')) +
-  annotate('text', x = 2027, y = 100000, label = 'This house sold\nfor $425k but is\nassessed at $15k', 
+  annotate('text', x = 2032, y = 130000, label = 'This house sold\nfor $425k but is\nassessed at $15k', 
            family = 'ssp') +
+  geom_curve(aes(x = 2023, y = 130000, xend = 2017.8, yend = 24000),
+             arrow = arrow(type = 'closed', length = unit(0.1, 'in'))) +
+  expand_limits(x = 0, y = 0) +
   scale_y_continuous(expand = c(0, 0),
                      breaks = c(0, 200000, 400000, 600000), 
                      labels = c('$0', '$200k', '$400k', '$600k'),
                      limits = c(0, 600000)) +
-  scale_x_continuous(limits = c(1921, 2032)) + 
+  scale_x_continuous(limits = c(1921, 2045), expand = c(0, 0),
+                     breaks = c(1925, 1950, 1975, 2000)) + 
   theme(panel.background = element_blank(),
         panel.grid = element_blank()) +
   font_theme
 
-# 2018 house: this house last sold for 425k (304 Coulter St)
-# 1982 house: (647 Clearfield)
 
 # number of and proportion of single family houses in each census tract with fireplaces recorded
 n_per_tract <- tracts %>%
