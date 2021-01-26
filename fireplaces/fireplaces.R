@@ -106,6 +106,7 @@ race_bg <- get_race_ethnicity(geography = 'block group', geometry = T) %>%
 
 race_points <- st_read('./race_ethnicity/race_points.shp')
 
+# Use colors that are similar to UVA's map
 my_cols <- c('#ff0202', '#aad44b', '#edb12c', '#e2c46e', '#86bbe3')
 
 ggplot() + 
@@ -163,19 +164,6 @@ ggplot() +
   font_theme
 
 
-# number of and proportion of single family houses in each census tract with fireplaces recorded
-n_per_tract <- tracts %>%
-  st_join(all_sfh, join = st_intersects) %>%
-  calc_p_fireplace(col_of_interest = GEOID10)
-
-# re-join to tracts sf object bc i wrote the calc_p_..() function to remove the geometry
-tracts_fireplaces <- tracts %>%
-  left_join(n_per_tract, by = 'GEOID10')
-
-# map of % of homes with fireplaces by census tract
-ggplot() +
-  geom_sf(data = tracts_fireplaces, aes(fill = p_fireplace))
-
 
 # Look at prevalence of fireplaces in 1800s to compare to Penn master's thesis
 fireplaces_1800s <- all_sfh %>%
@@ -221,52 +209,52 @@ fireplaces_decades <- fireplaces %>%
   mutate(decade = year_built - (year_built %% 10))
 
 
-# gganimate::shadow_mark() doesn't seem to be working with transition_manual()
-# ggplot() +
-#   geom_sf(data = fireplaces_decades, col = 'darkred') 
-#   transition_manual(decade) + 
-#   shadow_mark(col = 'darkgray')
-  
+# The chunk of code below creates the gif. I'm just going to load it in.
 
-
-decades <- unique(fireplaces_decades$decade)
-
-year_label <- tibble(
-  lat = rep(40.09, length(decades)),
-  lng = rep(-75.13, length(decades)),
-  label = paste0(decades, 's')
-) %>%
-  st_as_sf(coords = c('lng', 'lat'), crs = st_crs(city))
-
-title_label <- tibble(
-  lat = 40.128,
-  lng = -75.2481,
-  label = "Philadelphia Fireplaces"
-) %>%
-  st_as_sf(coords = c('lng', 'lat'), crs = st_crs(city))
-
-for (i in 1:length(decades)){
-  ggplot() +
-    geom_sf(data = city, fill = 'lightgray', col = NA) +
-    geom_sf_text(data = year_label[i,], aes(label = label), size = 14, family = 'ssp') +
-    geom_sf_text(data = title_label, aes(label = label), hjust = 0, 
-                 family = 'Merriweather', fontface = 'bold', size = 14) +
-    geom_sf(data = fireplaces_decades %>%
-              filter(decade < decades[i]),
-            col = 'darkgray', size = 0.9) +
-    geom_sf(data = fireplaces_decades %>%
-              filter(decade == decades[i]),
-            col = 'darkred', size = 0.9) +
-    theme(
-      panel.background = element_blank(),
-      panel.grid = element_blank(),
-      axis.text = element_blank(),
-      axis.ticks = element_blank(),
-      axis.title = element_blank()
-    )
-  
-  ggsave(filename = paste0('fireplace_map_', decades[i], '.png'))
-}
+# # gganimate::shadow_mark() doesn't seem to be working with transition_manual()
+# # ggplot() +
+# #   geom_sf(data = fireplaces_decades, col = 'darkred') 
+# #   transition_manual(decade) + 
+# #   shadow_mark(col = 'darkgray')
+# 
+# decades <- unique(fireplaces_decades$decade)
+# 
+# year_label <- tibble(
+#   lat = rep(40.09, length(decades)),
+#   lng = rep(-75.13, length(decades)),
+#   label = paste0(decades, 's')
+# ) %>%
+#   st_as_sf(coords = c('lng', 'lat'), crs = st_crs(city))
+# 
+# title_label <- tibble(
+#   lat = 40.128,
+#   lng = -75.2481,
+#   label = "Philadelphia Fireplaces"
+# ) %>%
+#   st_as_sf(coords = c('lng', 'lat'), crs = st_crs(city))
+# 
+# for (i in 1:length(decades)){
+#   ggplot() +
+#     geom_sf(data = city, fill = 'lightgray', col = NA) +
+#     geom_sf_text(data = year_label[i,], aes(label = label), size = 14, family = 'ssp') +
+#     geom_sf_text(data = title_label, aes(label = label), hjust = 0, 
+#                  family = 'Merriweather', fontface = 'bold', size = 14) +
+#     geom_sf(data = fireplaces_decades %>%
+#               filter(decade < decades[i]),
+#             col = 'darkgray', size = 0.9) +
+#     geom_sf(data = fireplaces_decades %>%
+#               filter(decade == decades[i]),
+#             col = 'darkred', size = 0.9) +
+#     theme(
+#       panel.background = element_blank(),
+#       panel.grid = element_blank(),
+#       axis.text = element_blank(),
+#       axis.ticks = element_blank(),
+#       axis.title = element_blank()
+#     )
+#   
+#   ggsave(filename = paste0('fireplace_map_', decades[i], '.png'))
+# }
 
 
 
@@ -310,7 +298,7 @@ neighborhood_heatmap <- neighborhoods %>%
   filter(mapname %in% selected_neighborhoods) %>%
   mutate(mapname = if_else(mapname == 'Fishtown - Lower Kensington',
                            'Fishtown',
-                           mapname)) %>%
+                           as.character(mapname))) %>%
   group_by(mapname) %>%
   # Get an average % by neighborhood across time to arrange the heatmap by
   mutate(neigh_avg = mean(p_fireplace, na.rm = T)) %>%
