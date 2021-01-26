@@ -27,6 +27,10 @@ tracts <- st_read('http://data.phl.opendata.arcgis.com/datasets/8bc0786524a4486b
 neighborhoods <- st_read('https://raw.githubusercontent.com/azavea/geo-data/master/Neighborhoods_Philadelphia/Neighborhoods_Philadelphia.geojson')
 city <- st_read('http://data.phl.opendata.arcgis.com/datasets/063f5f85ef17468ebfebc1d2498b7daf_0.geojson') %>%
   st_union()
+rivers <- st_read('https://opendata.arcgis.com/datasets/2b10034796f34c81a0eb44c676d86729_0.geojson') %>%
+  filter(MUNI == 'Philadelphia',
+         CREEK_NAME %in% c('Wissahickon Creek', 'Pennypack Creek', 'Cobbs Creek',
+                           'Schuylkill River', 'Delaware River'))
 
 # Run the race_ethnicity code to get get_race_ethnicity() function
 source('./race_ethnicity/race_ethnicity.R')
@@ -39,6 +43,38 @@ all_sfh <- st_read('https://phl.carto.com/api/v2/sql?filename=opa_properties_pub
   filter(year_built >= 1600,
          year_built <= year(today()),
          market_value <= 4000000)
+
+
+# get median household income data from ACS and split into quantiles
+med_income <- get_acs(geography = 'tract',
+                      variables = 'B19013_001',
+                      state = 'PA',
+                      county = 'Philadelphia',
+                      year = 2019,
+                      geometry = T) %>%
+  mutate(income_quantile = cut_number(estimate, 5),
+         income_quantile = factor(income_quantile, levels = levels(income_quantile), ordered = TRUE),
+         lowest_income = income_quantile == min(income_quantile, na.rm = T))
+
+# Map of fireplaces overlaid on lowest-income census tracts
+ggplot() +
+  geom_sf(data = city, fill = 'lightgray', col = NA) +
+  geom_sf(data = med_income %>%
+            filter(lowest_income),
+          fill = '#b36f93', col = '#b36f93') +
+  geom_sf(data = rivers, fill = 'darkgray', col = 'darkgray') +
+  geom_sf(data = all_sfh %>%
+            filter(has_fireplace),
+          shape = '.', size = 2) +
+  labs(title = "There are relatively few fireplaces in Philadelphia's poorest neighborhoods",
+       subtitle = 'Red areas show the lowest-income census tracts in Philly, and black dots show all recorded fireplaces') +
+  font_theme +
+  theme(panel.background = element_blank(),
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks = element_blank())
+
 
 # race breakdowns of census block groups
 race_bg <- get_race_ethnicity(geography = 'block group', geometry = T) %>%
@@ -97,22 +133,7 @@ calc_p_fireplace <- function(df, col_of_interest){
               p_fireplace = n_fireplace/n_sfh)
 }
 
-# get median household income data from ACS and split into quantiles
-med_income <- get_acs(geography = 'tract',
-                      variables = 'B19013_001',
-                      state = 'PA',
-                      county = 'Philadelphia',
-                      year = 2019,
-                      geometry = T) %>%
-  mutate(income_quantile = cut_number(estimate, 5),
-         income_quantile = factor(income_quantile, levels = levels(income_quantile), ordered = TRUE),
-         lowest_income = income_quantile == min(income_quantile, na.rm = T))
 
-ggplot() +
-  geom_sf(data = med_income, aes(fill = lowest_income)) +
-  geom_sf(data = all_sfh %>%
-               filter(has_fireplace),
-             size = 0.5)
 
 # Age vs market value plot. 8.11in wide x 4.6in tall (maybe taller)
 ggplot() +
