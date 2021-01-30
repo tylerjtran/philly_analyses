@@ -9,6 +9,8 @@ library(tidyverse); library(sf); library(tidycensus); library(lubridate); librar
 
 font_add_google('Merriweather')
 font_add_google('Source Sans Pro', 'ssp')
+font_add_google('Lora', 'old_serif')
+font_add_google('Courier Prime', 'old_mono')
 
 showtext_auto()
 
@@ -35,14 +37,16 @@ rivers <- st_read('https://opendata.arcgis.com/datasets/2b10034796f34c81a0eb44c6
 # Run the race_ethnicity code to get get_race_ethnicity() function
 source('./race_ethnicity/race_ethnicity.R')
 
-# All single family homes with some year and value bounds
-all_sfh <- st_read('https://phl.carto.com/api/v2/sql?filename=opa_properties_public&format=geojson&skipfields=cartodb_id&q=SELECT+*+FROM+opa_properties_public') %>%
-  filter(category_code_description == 'Single Family') %>%
-  mutate(has_fireplace = fireplaces > 0,
-         year_built = as.numeric(year_built)) %>%
-  filter(year_built >= 1600,
-         year_built <= year(today()),
-         market_value <= 4000000)
+load('./fireplaces/all_sfh.Rdata')
+# Commenting this part out because my computer is slow and I can load faster with the RData loaded above
+# # All single family homes with some year and value bounds
+# all_sfh <- st_read('https://phl.carto.com/api/v2/sql?filename=opa_properties_public&format=geojson&skipfields=cartodb_id&q=SELECT+*+FROM+opa_properties_public') %>%
+#   filter(category_code_description == 'Single Family') %>%
+#   mutate(has_fireplace = fireplaces > 0,
+#          year_built = as.numeric(year_built)) %>%
+#   filter(year_built >= 1600,
+#          year_built <= year(today()),
+#          market_value <= 4000000)
 
 
 # get median household income data from ACS and split into quantiles
@@ -104,18 +108,21 @@ race_bg <- get_race_ethnicity(geography = 'block group', geometry = T) %>%
 #   group_by(group) %>%
 #   summarise()
 
+# Load race_points shapefile (this can be made with the code directly above, but it takes awhile to run)
 race_points <- st_read('./race_ethnicity/race_points.shp')
 
 # Use colors that are similar to UVA's map
 my_cols <- c('#ff0202', '#aad44b', '#edb12c', '#e2c46e', '#86bbe3')
 
-ggplot() + 
-  geom_sf(data = race_points, aes(col = race_eth), shape = '.') + 
-  # geom_sf(data = fireplaces, size = 0.5, col = 'black') +
-  scale_color_manual(values = my_cols)
 
 # side-by-side map: left, fireplaces as points 0.5, dark red. put a semi-transparent gray layer
 # on philly suburbs
+# ggplot() + 
+  # geom_sf(data = race_points, aes(col = race_eth), shape = '.') + 
+  # geom_sf(data = fireplaces, size = 0.5, col = 'black') +
+  # scale_color_manual(values = my_cols)
+
+
 
 
 # Function to calculate % of houses with fireplaces
@@ -172,6 +179,20 @@ fireplaces_1800s <- all_sfh %>%
   mutate(decade = paste0(as.character(year_built - (year_built %% 10)), 's')) %>%
   calc_p_fireplace(col_of_interest = decade)
 
+fireplaces_1800s %>%
+  ggplot() +
+  labs(x = 'Decade', y = 'Fraction of Homes with Fireplaces',
+       title = 'Prevalence of Fireplace by Construction Decade') +
+  geom_bar(aes(x = decade, y = p_fireplace), stat = 'identity', fill = 'black', color = 'black') +
+  scale_y_continuous(expand = c(0, 0), labels = scales::percent) +
+  theme(panel.background = element_rect(fill = '#fdfae7'),
+        plot.background = element_rect(fill = '#fdfae7'),
+        panel.border = element_rect(color = 'black', fill = NA),
+        panel.grid = element_line(linetype = 'dashed', color = 'black'),
+        plot.title = element_text(family = 'old_mono'),
+        axis.title = element_text(family = 'old_serif'),
+        axis.text = element_text(family = 'old_serif'))
+
 
 heat_1800s <- all_sfh %>%
   as_tibble() %>%
@@ -200,17 +221,46 @@ heat_1800s <- all_sfh %>%
     TRUE ~ NA_character_
   )) %>%
   filter(! is.na(decade),
-         ! is.na(fuel_type)) %>%
+         ! is.na(heater_type)) %>%
   group_by(decade) %>%
-  count(fuel_type) %>%
+  count(heater_type) %>%
   mutate(p = n/sum(n))
+
+# 6.5w x 4.75tall
+heat_1800s %>%
+  filter(heater_type %in% c('Hot water', 'Hot air', 'Electric baseboard')) %>%
+  mutate(heater_type = factor(heater_type, levels = c('Hot water', 'Hot air', 'Electric baseboard'))) %>%
+  ggplot() +
+  labs(x = 'Decade', y = 'Fraction of Homes',
+       title = 'Primary Form of Heating By Decade Built',
+       caption = 'Includes single family homes existing in 2021.') +
+  geom_bar(aes(x = decade, y = p, fill = heater_type), 
+           stat = 'identity', position = 'dodge', color = 'black') +
+  scale_y_continuous(expand = c(0, 0), labels = scales::percent) +
+  scale_fill_manual(values = c('#4a4a4a', 'black', '#fdfae7')) +
+  guides(fill = guide_legend(nrow = 1)) +
+  theme(panel.background = element_rect(fill = '#fdfae7'),
+        plot.background = element_rect(fill = '#fdfae7'),
+        panel.border = element_rect(color = 'black', fill = NA),
+        panel.grid = element_line(linetype = 'dashed', color = 'black'),
+        plot.title = element_text(family = 'old_mono'),
+        axis.title = element_text(family = 'old_serif'),
+        plot.caption = element_text(family = 'old_serif'),
+        axis.text = element_text(family = 'old_serif'),
+        legend.position = c(0.6, 0.938),
+        legend.title = element_blank(),
+        legend.background = element_blank(),
+        legend.text = element_text(family = 'old_serif'),
+        legend.box.background = element_rect(fill = '#fdfae7', color = 'black'))
   
-fireplaces_decades <- fireplaces %>%
-  mutate(decade = year_built - (year_built %% 10))
 
 
 # The chunk of code below creates the gif. I'm just going to load it in.
-
+# 
+# fireplaces_decades <- all_sfh %>%
+#   filter(has_fireplace) %>%
+#   mutate(decade = year_built - (year_built %% 10))
+# 
 # # gganimate::shadow_mark() doesn't seem to be working with transition_manual()
 # # ggplot() +
 # #   geom_sf(data = fireplaces_decades, col = 'darkred') 
